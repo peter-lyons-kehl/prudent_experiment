@@ -1,5 +1,5 @@
 [package]
-name = "prudent_client"
+name = "prudent_experiment"
 version = "0.1.0"
 edition = "2024"
 
