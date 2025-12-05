@@ -1,7 +1,7 @@
 // #![feature(type_alias_impl_trait)]
 #![allow(unused)]
 
-mod module {
+/*mod module {
     use prudent::unsafe_method;
     //
     const _: u8 = unsafe_method!( 1u8 =>.unchecked_add => 0 );
@@ -11,7 +11,7 @@ mod module {
 }
 
 pub const AFTER_PATH: &[char] = &['{', '[', ',', '>', '=', ':', ';', '|']; // and: "=>"
-
+*/
 #[macro_export]
 macro_rules! unsafe_fn {
     ( $fn:path | $( $arg:expr ),+ ) => {
@@ -34,12 +34,12 @@ macro_rules! unsafe_fn {
     ( $type:ty > $method:ident $( $arg:expr ),+ ) => {
           unsafe { /* ****** */ <$type>::$method( $( $arg ),+ ) }
     };
-    ( $fn:expr, $( $arg:expr ),+ ) => {
-        unsafe { /* **** */$fn( $( $arg ),+ ) }
-    };
     // both expressions within {}, and blocks (blocks don't need an extra inner pair of {})
     ( { $( $fn_part:tt )+ } $( $arg:expr ),+ ) => {
         unsafe { /* ****** */ ({ $( $fn_part )+ })( $( $arg ),+ ) }
+    };
+    ( $fn:expr, $( $arg:expr ),+ ) => {
+        unsafe { /* **** */$fn( $( $arg ),+ ) }
     };
     // this has to be **after** alternatives where $fn:expr. Otherwise it would (surprisingly)
     // attempt to match `unsafe_fn!(crate::f, 1, 2);` and (of course) it would fail.
@@ -84,6 +84,7 @@ struct Strc;
 impl Strc {
     const fn method(&self, _: u8, _: u8) {}
     const fn associated_fn(_: i8, _: u64) {}
+    const fn associated_gen<T>(_: u8, _: u8) {}
 }
 #[rustfmt::skip]
 const _FN: () = {
@@ -91,35 +92,39 @@ const _FN: () = {
     let unchecked_add = u8::unchecked_add;
     // - functions, methods, associated functions
     // - paths only; not generic qualifications of methods/associated functions
-    unsafe_fn!(                     crate::f|      1, 2);
-    unsafe_fn!(            u8::unchecked_add|      1, 2);
+    unsafe_fn!(                     crate::f|       1, 2);
+    unsafe_fn!(            u8::unchecked_add|       1, 2);
     // - Same, but a comma instead of the pipe. TODO Remove?
-    unsafe_fn!(                     crate::f,      1, 2);
-    unsafe_fn!(            u8::unchecked_add,      1, 2);
-    unsafe_fn!(          Strc::associated_fn,      1, 2);
-    unsafe_fn!(   crate::Strc::associated_fn,      1, 2);
+    unsafe_fn!(                     crate::f,       1, 2);
+    unsafe_fn!(            u8::unchecked_add,       1, 2);
+    unsafe_fn!(          Strc::associated_fn,       1, 2);
+    unsafe_fn!(   crate::Strc::associated_fn,       1, 2);
     // - functions only (not for methods/associated functions)
-    unsafe_fn!(                          crate: f  1, 2);
+    unsafe_fn!(                     crate: f        1, 2);
 
     // qualified methods and associated functions only, with a type (the type is in scope, or with a
     // path)
-    unsafe_fn!(           u8  >unchecked_add       1, 2);
-    unsafe_fn!(primitive::u8  >unchecked_add       1, 2);
-    unsafe_fn!(       Gen<u8> >method        &GEN, 1, 2);
-    unsafe_fn!(crate::Gen<u8> >method        &GEN, 1, 2);
-    unsafe_fn!(          Strc >associated_fn       1, 2);
-    unsafe_fn!(   crate::Strc >associated_fn       1, 2);
+    unsafe_fn!(           u8  >unchecked_add        1, 2);
+    unsafe_fn!(primitive::u8  >unchecked_add        1, 2);
+    unsafe_fn!(       Gen<u8> >method         &GEN, 1, 2);
+    unsafe_fn!(crate::Gen<u8> >method         &GEN, 1, 2);
+    unsafe_fn!(          Strc >associated_fn        1, 2);
+    unsafe_fn!(   crate::Strc >associated_fn        1, 2);
 
     // - function name (identifier) in scope
     // - functions; methods/associated functions only if passed stored in a const/variable
-    unsafe_fn!(                unchecked_add       1, 2);
+    unsafe_fn!(                unchecked_add        1, 2);
 
     // - function is a result of a block
-    // - both functions and methods
-    unsafe_fn!(           {u8::unchecked_add}      1, 2);
+    // - functions, methods, associated functions
+    unsafe_fn!(           {u8::unchecked_add}       1, 2);
     unsafe_fn!( {let m = u8::unchecked_add;
-                                           m}      1, 2);
+                                           m}       1, 2);
+    unsafe_fn!(           {<Gen<u8>>::method} &GEN, 1, 2);
+    unsafe_fn!(         {Strc::associated_fn}       1, 2);
+    unsafe_fn!(  {Strc::associated_gen::<u8>}       1, 2);
 };
+
 const S: Strc = Strc;
 #[rustfmt::skip]
 const _MD: () = {
@@ -145,13 +150,3 @@ const _MD: () = {
     // result will move, or it will have to be Copy and it will be copied.
     unsafe_md!(    {*&S}  .method        1, 2);
 };
-
-#[macro_export]
-macro_rules! expr_accept_path {
-    ( $fn:ident $( $arg:expr ),+ ) => {
-        //unsafe { $fn( $( $arg ),+ ) }
-    };
-    ($e:expr) => {};
-}
-
-expr_accept_path!(crate::f);
