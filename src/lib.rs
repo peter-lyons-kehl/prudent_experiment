@@ -20,8 +20,8 @@ macro_rules! unsafe_fn {
     // some::path:fn_x
     ( $path:path : $fn:ident $( $arg:expr ),+ ) => {
         ({
-          use $path::{$fn};
-          unsafe { /* * */ $fn( $( $arg ),+ ) }
+          use $path::{$fn as prudent_unique_local_function_alias};
+          unsafe { /* * */ prudent_unique_local_function_alias( $( $arg ),+ ) }
         })
     };
     // some::path::type>method_x
@@ -72,91 +72,78 @@ macro_rules! unsafe_md {
         unsafe { $self.$method( $( $arg ),+ ) }
     };
 }
-pub const UNCHECKED_ADD: unsafe fn(u8, u8) -> u8 = u8::unchecked_add;
 const unsafe fn f(_: u8, _: u8) {}
-const _: () = {
-    //unsafe { u8::{unchecked_add}(1, 2); }
-};
+struct Gen<T> {
+    t: T,
+}
+impl<T> Gen<T> {
+    const unsafe fn method(&self, _: u16, _: u16) {}
+}
+const GEN: Gen<u8> = Gen { t: 0 };
+struct Strc;
+impl Strc {
+    const fn method(&self, _: u8, _: u8) {}
+    const fn associated_fn(_: i8, _: u64) {}
+}
 #[rustfmt::skip]
 const _FN: () = {
     use core::primitive;
     let unchecked_add = u8::unchecked_add;
-    // - both functions and methods:
-    // - no autocomplete!
-    unsafe_fn!(                  crate::f, 1, 2);
-    unsafe_fn!(         u8::unchecked_add, 1, 2);
-    /*
-    unsafe_fn!(              crate::f; 1, 2);
-    */
-    // - limited: the arguments must not use any existing `f` from outside
-    // - functions only - not for methods
-    unsafe_fn!(                   crate: f 1, 2);
-    // NOT for methods:
-    #[cfg(false)]
-    unsafe_fn!(    core::u8: unchecked_add 1, 2);
+    // - functions, methods, associated functions
+    // - paths only; not generic qualifications of methods/associated functions
+    unsafe_fn!(                     crate::f|      1, 2);
+    unsafe_fn!(            u8::unchecked_add|      1, 2);
+    // - Same, but a comma instead of the pipe. TODO Remove?
+    unsafe_fn!(                     crate::f,      1, 2);
+    unsafe_fn!(            u8::unchecked_add,      1, 2);
+    unsafe_fn!(          Strc::associated_fn,      1, 2);
+    unsafe_fn!(   crate::Strc::associated_fn,      1, 2);
+    // - functions only (not for methods/associated functions)
+    unsafe_fn!(                          crate: f  1, 2);
 
-    // method with a type (in scope, or with a path)
-    unsafe_fn!(           u8>unchecked_add 1, 2);
-    unsafe_fn!(primitive::u8>unchecked_add 1, 2);
+    // qualified methods and associated functions only, with a type (the type is in scope, or with a
+    // path)
+    unsafe_fn!(           u8  >unchecked_add       1, 2);
+    unsafe_fn!(primitive::u8  >unchecked_add       1, 2);
+    unsafe_fn!(       Gen<u8> >method        &GEN, 1, 2);
+    unsafe_fn!(crate::Gen<u8> >method        &GEN, 1, 2);
+    unsafe_fn!(          Strc >associated_fn       1, 2);
+    unsafe_fn!(   crate::Strc >associated_fn       1, 2);
 
-    // - function name (identifier) in scope; not for methods
-    // - autocomplete after the first letter:
-    unsafe_fn!(              unchecked_add 1, 2);
-    /*
-    // NOT for methods:
-    unsafe_fn!(      u8: unchecked_add 1, 2);
-    unsafe_fn!(core::u8: unchecked_add 1, 2);
-    */
-    // - Accepting either fn or method:
-    // - autocomplete after the second colon AND the first letter
-    // - REMOVED:
-    //unsafe_fn!(    u8::unchecked_add=> 1, 2);
+    // - function name (identifier) in scope
+    // - functions; methods/associated functions only if passed stored in a const/variable
+    unsafe_fn!(                unchecked_add       1, 2);
 
-    /*
-    unsafe_fn!(    u8::unchecked_add;  1, 2);
-    unsafe_fn!(    u8::unchecked_add,  1, 2);
-    */
-    unsafe_fn!(        {u8::unchecked_add} 1, 2);
+    // - function is a result of a block
+    // - both functions and methods
+    unsafe_fn!(           {u8::unchecked_add}      1, 2);
     unsafe_fn!( {let m = u8::unchecked_add;
-                                        m} 1, 2);
-    // path to both functions AND methods:
-    unsafe_fn!(                  crate::f| 1, 2);
-    unsafe_fn!(         u8::unchecked_add| 1, 2);
+                                           m}      1, 2);
 };
-#[rustfmt::skip]
-fn _fn_pointers_non_const() {
-    // autocomplete after the second colon AND the first letter
-    unsafe_fn!(  crate::UNCHECKED_ADD| 1, 2);
-}
-const ZERO: u8 = 0;
-struct Strc;
-impl Strc {
-    const fn method(&self, _: u8, _: u8) {}
-}
 const S: Strc = Strc;
 #[rustfmt::skip]
 const _MD: () = {
-    // - receiver is a literal, or an identifier (const/variable) in scope
-    // - autocomplete after the dot AND the first letter
+    // - receiver passed in as a literal, or an identifier (const/variable), **and** in scope
     unsafe_md!(      1u8  .unchecked_add 1   );
     unsafe_md!(        S  .method        1, 2);
 
-    // path::to::module :type .method
+    // path::to::module :CONST_OR_STATIC
     unsafe_md!( crate: S  .method        1, 2);
-    // path::to::type >method
+
+    // path::to::CONST_OR_STATIC
     unsafe_md!( crate::S  >method        1, 2);
 
-    // receiver is an expression
+    // receiver is passed as an expression
     unsafe_md!(      1u8 =>unchecked_add 2   );
-    unsafe_md!(    *&1u8 =>unchecked_add 2   );
     unsafe_md!(      *&S =>method        1, 2);
 
-    // - receiver is an expression. But **unlike** unsafe_fn where the function parameter may be a
-    //   result of a block, here it can't be a block. Otherwise it would move, or it would require
-    //   Copy and it would make an unnecessary copy (if the receiver is not by value, but by
-    //   reference).
-    unsafe_md!( { *&S }.method 1, 2);
-
+    // - receiver is an expression passed in between `{...}`. But, **unlike** unsafe_fn, here the
+    //   receiver expression **cannot** be preceded by any number of statements (inside that
+    //   `{...}`).
+    //
+    // Of course, you can put the expression in an extra pair of brackets `{...}`. But then the
+    // result will move, or it will have to be Copy and it will be copied.
+    unsafe_md!(    {*&S}  .method        1, 2);
 };
 
 #[macro_export]
