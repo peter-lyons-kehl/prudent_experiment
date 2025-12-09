@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-prudent = {path = "../prudent", version = "0.0.3-beta"}
+#prudent = {path = "../prudent", version = "0.0.3-beta"}
 ##prudent = {path = "../prudent", version = "0.0.3-beta", features=["assert_unsafe_methods"] }
 
 [lints.rust]
-unexpected_cfgs = { level = "forbid"}
+#unexpected_cfgs = { level = "forbid"}
